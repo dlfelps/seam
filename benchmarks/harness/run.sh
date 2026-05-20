@@ -45,11 +45,11 @@ mkdir -p "$CACHE/base" "$CACHE/$MODE"
 
 # ---------- helpers ----------
 
-# Invoke Claude Code in $WORKDIR with a prompt; wrap in /seam-gen in seam mode.
+# Invoke Claude Code in $WORKDIR with a prompt; wrap in /seam:seam-gen in seam mode.
 run_claude() {
   local prompt="$1" out="$2"
   if [ "$MODE" = "seam" ]; then
-    (cd "$WORKDIR" && claude -p "/seam-gen $prompt" --dangerously-skip-permissions --output-format json) > "$out"
+    (cd "$WORKDIR" && claude -p "/seam:seam-gen $prompt" --dangerously-skip-permissions --output-format json) > "$out"
   else
     (cd "$WORKDIR" && claude -p "$prompt" --dangerously-skip-permissions --output-format json) > "$out"
   fi
@@ -100,9 +100,11 @@ snapshot_archive() {
       echo "is not a permission issue. Likely causes:"
       echo "  - claude produced a textual response instead of using its editing tools."
       echo "  - claude wrote files somewhere other than the workdir (cwd mismatch)."
-      echo "  - In seam mode, /seam-gen was not registered as a slash command (plugin"
-      echo "    not installed in the environment where claude -p runs). Verify with"
-      echo "    'claude plugin list' that 'seam' is enabled."
+      echo "  - In seam mode, /seam:seam-gen was not registered as a slash command"
+      echo "    (the seam plugin is not enabled in the environment where claude -p"
+      echo "    runs). Verify with 'claude plugin list' that 'seam' is enabled."
+      echo "    Plugin slash commands are namespaced: it is /seam:seam-gen, not"
+      echo "    /seam-gen."
       echo
       if [ -n "$claude_json" ] && [ -f "$claude_json" ]; then
         python - "$claude_json" <<'PY' || echo "  See $claude_json for the raw run output."

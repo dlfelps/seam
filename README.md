@@ -54,7 +54,7 @@ Verify the install:
 /plugin list
 ```
 
-You should see `seam` in the enabled plugins list and `/seam-gen` available as a slash command.
+You should see `seam` in the enabled plugins list. Plugin slash commands are namespaced by plugin name, so the orchestrator is invoked as `/seam:seam-gen`.
 
 ### Updating
 
@@ -86,7 +86,7 @@ To iterate on the plugin from a working copy, add the local directory as a marke
 Inside a Claude Code session, run:
 
 ```
-/seam-gen Create a document parsing service that supports XML and JSON sources
+/seam:seam-gen Create a document parsing service that supports XML and JSON sources
 ```
 
 The orchestrator will:
@@ -125,7 +125,7 @@ seam/
 │   ├── plugin.json         # plugin manifest
 │   └── marketplace.json    # marketplace catalog (this repo is a one-plugin marketplace)
 ├── commands/
-│   └── seam-gen.md         # /seam-gen orchestrator
+│   └── seam-gen.md         # /seam:seam-gen orchestrator
 ├── agents/
 │   ├── architect.md        # interfaces only, model: opus
 │   ├── critic.md           # red-team review, model: sonnet
