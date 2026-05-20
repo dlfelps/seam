@@ -41,17 +41,45 @@ State is passed via files in `./.seam-work/`:
 
 ## Installation
 
-### Local testing
+Seam is distributed as a single-plugin marketplace hosted from this repository. Inside a Claude Code session, add the marketplace and then install the plugin:
 
-From the project root:
-
-```bash
-claude --plugin-dir /path/to/seam
+```
+/plugin marketplace add dlfelps/seam
+/plugin install seam@seam
 ```
 
-### As a personal plugin
+Verify the install:
 
-Copy or symlink the repo into your Claude Code plugins directory, then load it via `/plugin install` (see Claude Code docs for the current install command for your version).
+```
+/plugin list
+```
+
+You should see `seam` in the enabled plugins list and `/seam-gen` available as a slash command.
+
+### Updating
+
+When a new version is published, pull the latest marketplace catalog and reinstall:
+
+```
+/plugin marketplace update seam
+/plugin install seam@seam
+```
+
+### Local development
+
+To iterate on the plugin from a working copy, add the local directory as a marketplace instead of the GitHub repo:
+
+```
+/plugin marketplace add /path/to/seam
+/plugin install seam@seam
+```
+
+### Uninstalling
+
+```
+/plugin uninstall seam@seam
+/plugin marketplace remove seam
+```
 
 ## Usage
 
@@ -94,7 +122,8 @@ The most important knob is the Critic's system prompt in `agents/critic.md`. The
 ```
 seam/
 ├── .claude-plugin/
-│   └── plugin.json
+│   ├── plugin.json         # plugin manifest
+│   └── marketplace.json    # marketplace catalog (this repo is a one-plugin marketplace)
 ├── commands/
 │   └── seam-gen.md         # /seam-gen orchestrator
 └── agents/
