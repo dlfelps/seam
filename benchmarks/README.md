@@ -4,7 +4,12 @@ A reproducible (but **not** auto-executed) experiment that quantifies the trade-
 extra tokens during interface design in exchange for more stable contracts as a project evolves.
 
 This directory holds the prompts, acceptance tests, and harness scripts. Running the benchmark
-requires a Claude Code account with billing enabled; CI does not run it.
+requires an authenticated Claude Code install — a Pro or Max subscription, an Anthropic API
+key, or Bedrock/Vertex credentials all work. CI does not run it.
+
+A full pass is 194 Claude Code invocations, which is well inside Max's usage budget but is
+likely to bump into Pro's 5-hour rate limits; on Pro, plan to spread the two conditions
+across multiple sittings or run a reduced ordering set (see `harness/permute.py`).
 
 ## Hypothesis
 
