@@ -49,9 +49,9 @@ mkdir -p "$CACHE/base" "$CACHE/$MODE"
 run_claude() {
   local prompt="$1" out="$2"
   if [ "$MODE" = "seam" ]; then
-    (cd "$WORKDIR" && claude -p "/seam-gen $prompt" --output-format json) > "$out"
+    (cd "$WORKDIR" && claude -p "/seam-gen $prompt" --permission-mode acceptEdits --output-format json) > "$out"
   else
-    (cd "$WORKDIR" && claude -p "$prompt" --output-format json) > "$out"
+    (cd "$WORKDIR" && claude -p "$prompt" --permission-mode acceptEdits --output-format json) > "$out"
   fi
 }
 
@@ -82,6 +82,18 @@ restore_archive() {
 # Snapshot $WORKDIR/src into $1.
 snapshot_archive() {
   local archive="$1"
+  if [ ! -d "$WORKDIR/src" ]; then
+    cat >&2 <<EOF
+error: expected '$WORKDIR/src' to exist, but it does not. Claude did not produce
+a ./src/ tree. Common causes:
+  - 'claude -p' ran without permission to write files. Try adding
+    '--permission-mode acceptEdits' (or '--dangerously-skip-permissions') to the
+    claude invocations in run_claude.
+  - The model produced a textual response instead of using its editing tools.
+    Inspect the JSON output for this run to see what happened.
+EOF
+    exit 1
+  fi
   tar -czf "$archive" -C "$WORKDIR" src
 }
 

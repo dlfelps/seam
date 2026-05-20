@@ -56,9 +56,9 @@ function Invoke-Claude {
     Push-Location $WorkDir
     try {
         if ($Mode -eq 'seam') {
-            claude -p "/seam-gen $Prompt" --output-format json | Set-Content -Path $Out -Encoding utf8
+            claude -p "/seam-gen $Prompt" --permission-mode acceptEdits --output-format json | Set-Content -Path $Out -Encoding utf8
         } else {
-            claude -p $Prompt --output-format json | Set-Content -Path $Out -Encoding utf8
+            claude -p $Prompt --permission-mode acceptEdits --output-format json | Set-Content -Path $Out -Encoding utf8
         }
         if ($LASTEXITCODE -ne 0) {
             throw "claude exited with code $LASTEXITCODE"
@@ -109,6 +109,18 @@ function Restore-Archive {
 # Snapshot $WorkDir/src into $Archive.
 function Save-Archive {
     param([string]$Archive)
+    $srcPath = Join-Path $WorkDir 'src'
+    if (-not (Test-Path $srcPath)) {
+        throw @"
+expected '$srcPath' to exist, but it does not. Claude did not produce a ./src/ tree.
+Common causes:
+  - 'claude -p' ran without permission to write files. Try adding
+    '--permission-mode acceptEdits' (or '--dangerously-skip-permissions') to the
+    claude invocations in Invoke-Claude.
+  - The model produced a textual response instead of using its editing tools.
+    Inspect the JSON output for this run to see what happened.
+"@
+    }
     & tar -czf $Archive -C $WorkDir src
     if ($LASTEXITCODE -ne 0) {
         throw "tar create failed for $Archive"
