@@ -1,5 +1,17 @@
 {
   "name": "seam",
   "version": "0.1.0",
-  "description": "Interface-first code generation. Forces an Architect/Critic/Developer pipeline so that contracts are designed and stress-tested for extensibility before any implementation is written."
+  "description": "Interface-first code generation. Forces an Architect/Critic/Developer pipeline so that contracts are designed and stress-tested for extensibility before any implementation is written.",
+  "author": {
+    "name": "dlfelps"
+  },
+  "homepage": "https://github.com/dlfelps/seam",
+  "repository": "https://github.com/dlfelps/seam",
+  "keywords": [
+    "code-generation",
+    "interfaces",
+    "architecture",
+    "multi-agent",
+    "python"
+  ]
 }
