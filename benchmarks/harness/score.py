@@ -1,14 +1,17 @@
-"""Aggregate one or more benchmark result directories into a comparison table.
+"""Aggregate the benchmark cache into a comparison table.
 
 Usage:
-    python harness/score.py results/baseline-*  results/seam-*
+    python harness/score.py .cache/baseline .cache/seam
 
-For each results directory the script:
+For each cache directory the script:
   - sums token totals per ordering (and overall) using measure.py
-  - reads each step's `.status` file to compute step and sequence success rates
+  - reads each step's `status` file to compute step and sequence success rates
   - prints a Markdown summary
 
-It does not require any third-party libraries.
+Expects the layout produced by harness/run.sh:
+    <root>/<NN>-<perm>/<NN>-<feature>/claude.json
+    <root>/<NN>-<perm>/<NN>-<feature>/status
+Plus, one level up, .cache/base/<mode>.json and .cache/base/<mode>.status for the base build.
 """
 from __future__ import annotations
 
@@ -19,10 +22,12 @@ from pathlib import Path
 from measure import summarize
 
 
-def load_step(json_path: Path) -> dict:
+def load_tokens(json_path: Path) -> int:
+    if not json_path.exists():
+        return 0
     with open(json_path) as f:
         payload = json.load(f)
-    return summarize(payload)
+    return summarize(payload)["total"]
 
 
 def load_status(status_path: Path) -> str:
@@ -31,22 +36,30 @@ def load_status(status_path: Path) -> str:
     return status_path.read_text().strip()
 
 
-def aggregate(results_dir: Path) -> dict:
-    base_tokens = load_step(results_dir / "base.json") if (results_dir / "base.json").exists() else {"total": 0}
-    base_status = load_status(results_dir / "base.status")
+def aggregate(mode_dir: Path) -> dict:
+    mode = mode_dir.name  # 'baseline' or 'seam'
+    base_dir = mode_dir.parent / "base"
+    base_tokens = load_tokens(base_dir / f"{mode}.json")
+    base_status = load_status(base_dir / f"{mode}.status")
 
     orderings = []
-    for perm_dir in sorted(p for p in results_dir.iterdir() if p.is_dir()):
+    for perm_dir in sorted(p for p in mode_dir.iterdir() if p.is_dir()):
         if not perm_dir.name[:2].isdigit():
             continue
         per_step = []
-        for json_file in sorted(perm_dir.glob("*.json")):
-            feature = json_file.stem
-            tokens = load_step(json_file)
-            status = load_status(perm_dir / f"{feature}.status")
-            per_step.append({"feature": feature, "tokens": tokens["total"], "status": status})
+        for step_dir in sorted(s for s in perm_dir.iterdir() if s.is_dir()):
+            tokens = load_tokens(step_dir / "claude.json")
+            status = load_status(step_dir / "status")
+            per_step.append({
+                "feature": step_dir.name,
+                "tokens": tokens,
+                "status": status,
+            })
         seq_total_tokens = sum(s["tokens"] for s in per_step)
-        seq_pass = all(s["status"] == "pass" for s in per_step) and len(per_step) == 4
+        seq_pass = (
+            len(per_step) == 3
+            and all(s["status"] == "pass" for s in per_step)
+        )
         orderings.append({
             "name": perm_dir.name,
             "steps": per_step,
@@ -60,8 +73,8 @@ def aggregate(results_dir: Path) -> dict:
     seq_pass = sum(1 for o in orderings if o["all_pass"])
 
     return {
-        "dir": results_dir.name,
-        "base_tokens": base_tokens["total"],
+        "dir": mode_dir.name,
+        "base_tokens": base_tokens,
         "base_status": base_status,
         "orderings": orderings,
         "step_success_rate": step_pass / step_total if step_total else 0.0,
@@ -79,7 +92,7 @@ def render(agg: dict) -> str:
     lines.append(f"- base build: {agg['base_tokens']:,} tokens ({agg['base_status']})")
     lines.append(f"- step success rate: {agg['step_success_rate']:.0%}")
     lines.append(f"- sequence success rate: {agg['sequence_success_rate']:.0%}")
-    lines.append(f"- mean tokens per sequence (4 features): {agg['mean_sequence_tokens']:,.0f}")
+    lines.append(f"- mean tokens per sequence (3 features): {agg['mean_sequence_tokens']:,.0f}")
     lines.append("")
     lines.append("| ordering | tokens | all pass |")
     lines.append("|---|---:|:---:|")
@@ -91,7 +104,7 @@ def render(agg: dict) -> str:
 
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
-        print("usage: score.py <results-dir> [<results-dir> ...]", file=sys.stderr)
+        print("usage: score.py <mode-cache-dir> [<mode-cache-dir> ...]", file=sys.stderr)
         return 2
     aggs = [aggregate(Path(p)) for p in argv[1:]]
     for a in aggs:

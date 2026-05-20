@@ -1,18 +1,27 @@
 #!/usr/bin/env bash
-# Drive one condition of the Seam benchmark end-to-end.
+# Drive one condition of the Seam benchmark end-to-end. Resumable on rate-limit.
 #
 # Usage:
 #   ./harness/run.sh baseline
 #   ./harness/run.sh seam
 #
-# Run this from the benchmarks/ directory. It assumes:
-#   - the `claude` CLI is on PATH and authenticated
-#   - `pytest` is installed in the active environment
-#   - the Seam plugin is loadable from the repo (e.g., `claude --plugin-dir ..`)
+# Run from any directory; the script resolves benchmarks/ relative to its own location.
+# Assumes the `claude` CLI is on PATH and authenticated, and `pytest` is installed in the
+# active environment.
 #
-# The script is intentionally serial so failures can be inspected. It does NOT
-# automatically retry Claude Code on transient errors; re-run the script with the
-# same ordering file pointer to resume.
+# State lives in benchmarks/.cache/ (gitignored). Layout:
+#   .cache/base/<mode>.tar.gz                     base src/ for this mode (built once)
+#   .cache/base/<mode>.json                       raw Claude output for the base build
+#   .cache/base/<mode>.status                     pass | fail (base test result)
+#   .cache/<mode>/<NN>-<perm>/<NN>-<feature>/
+#       claude.json    raw Claude output for this step
+#       tests.log      pytest output
+#       status         pass | fail
+#       src.tar.gz     snapshot of workdir/src AFTER this step
+#
+# Resume semantics: any step whose directory contains a `status` file is treated as
+# complete and is skipped. To force a step to re-run, delete its directory. To force
+# the base to rebuild, delete .cache/base/<mode>.tar.gz.
 
 set -euo pipefail
 
@@ -26,21 +35,19 @@ case "$MODE" in
 esac
 
 BENCH_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CACHE="$BENCH_DIR/.cache"
 WORKDIR="$BENCH_DIR/workdir"
-SNAPSHOT="$BENCH_DIR/.snapshot"
-TS="$(date +%Y%m%d-%H%M%S)"
-RESULTS="$BENCH_DIR/results/$MODE-$TS"
+BASE_ARCHIVE="$CACHE/base/$MODE.tar.gz"
+BASE_JSON="$CACHE/base/$MODE.json"
+BASE_STATUS="$CACHE/base/$MODE.status"
 
-mkdir -p "$RESULTS"
-echo "results: $RESULTS"
+mkdir -p "$CACHE/base" "$CACHE/$MODE"
 
 # ---------- helpers ----------
 
-# Invoke Claude Code with a prompt; in seam mode wrap the prompt in /seam-gen.
-# Writes the raw JSON output to $2.
+# Invoke Claude Code in $WORKDIR with a prompt; wrap in /seam-gen in seam mode.
 run_claude() {
-  local prompt="$1"
-  local out="$2"
+  local prompt="$1" out="$2"
   if [ "$MODE" = "seam" ]; then
     (cd "$WORKDIR" && claude -p "/seam-gen $prompt" --output-format json) > "$out"
   else
@@ -48,8 +55,8 @@ run_claude() {
   fi
 }
 
-# Run the cumulative pytest suite for the given list of feature names and the base.
-# Writes pass/fail to $2.
+# Run cumulative pytest for [base] + [given features]; write pass/fail to $2.
+# Test log goes to $2.log.
 run_tests() {
   local -n features=$1
   local status_out=$2
@@ -64,22 +71,38 @@ run_tests() {
   fi
 }
 
-# ---------- step 0: build the base ----------
+# Restore a tarball into $WORKDIR/src, replacing whatever is there.
+restore_archive() {
+  local archive="$1"
+  rm -rf "$WORKDIR/src"
+  mkdir -p "$WORKDIR"
+  tar -xzf "$archive" -C "$WORKDIR"
+}
 
-rm -rf "$WORKDIR" "$SNAPSHOT"
-mkdir -p "$WORKDIR"
-echo "==> base build ($MODE)"
-run_claude "$(cat "$BENCH_DIR/spec.md")" "$RESULTS/base.json"
+# Snapshot $WORKDIR/src into $1.
+snapshot_archive() {
+  local archive="$1"
+  tar -czf "$archive" -C "$WORKDIR" src
+}
 
-base_features=()
-run_tests base_features "$RESULTS/base.status"
-echo "    base tests: $(cat "$RESULTS/base.status")"
+# ---------- step 0: build (or reuse) the base ----------
 
-cp -r "$WORKDIR/src" "$SNAPSHOT"
+if [ -f "$BASE_ARCHIVE" ]; then
+  echo "==> base build ($MODE) — cached: $BASE_ARCHIVE"
+else
+  echo "==> base build ($MODE) — building"
+  rm -rf "$WORKDIR"
+  mkdir -p "$WORKDIR"
+  run_claude "$(cat "$BENCH_DIR/spec.md")" "$BASE_JSON"
+  base_features=()
+  run_tests base_features "$BASE_STATUS"
+  echo "    base tests: $(cat "$BASE_STATUS")"
+  snapshot_archive "$BASE_ARCHIVE"
+fi
 
-# ---------- step 1..N: each ordering ----------
+# ---------- ordering loop ----------
 
-orderings_file="$RESULTS/orderings.txt"
+orderings_file="$CACHE/$MODE/orderings.txt"
 python "$BENCH_DIR/harness/permute.py" > "$orderings_file"
 total=$(wc -l < "$orderings_file")
 idx=0
@@ -87,22 +110,37 @@ idx=0
 while IFS=',' read -ra features; do
   idx=$((idx + 1))
   perm_tag=$(IFS=_; echo "${features[*]}")
-  perm_dir="$RESULTS/$(printf '%02d-%s' "$idx" "$perm_tag")"
-  mkdir -p "$perm_dir"
+  ord_dir="$CACHE/$MODE/$(printf '%02d-%s' "$idx" "$perm_tag")"
+  mkdir -p "$ord_dir"
   echo "==> [$idx/$total] $perm_tag"
 
-  # restore snapshot
-  rm -rf "$WORKDIR/src"
-  cp -r "$SNAPSHOT" "$WORKDIR/src"
-
+  prev_archive="$BASE_ARCHIVE"
+  step_idx=0
   added=()
+
   for f in "${features[@]}"; do
+    step_idx=$((step_idx + 1))
     added+=("$f")
-    echo "    + $f"
-    run_claude "$(cat "$BENCH_DIR/features/$f.md")" "$perm_dir/$f.json"
-    run_tests added "$perm_dir/$f.status"
-    echo "      tests: $(cat "$perm_dir/$f.status")"
+    step_dir="$ord_dir/$(printf '%02d-%s' "$step_idx" "$f")"
+
+    if [ -f "$step_dir/status" ] && [ -f "$step_dir/src.tar.gz" ]; then
+      echo "    [$step_idx] $f — cached ($(cat "$step_dir/status"))"
+      prev_archive="$step_dir/src.tar.gz"
+      continue
+    fi
+
+    # Incomplete cache from a prior aborted run — clear it.
+    rm -rf "$step_dir"
+    mkdir -p "$step_dir"
+
+    echo "    [$step_idx] $f — running"
+    restore_archive "$prev_archive"
+    run_claude "$(cat "$BENCH_DIR/features/$f.md")" "$step_dir/claude.json"
+    run_tests added "$step_dir/status"
+    snapshot_archive "$step_dir/src.tar.gz"
+    echo "      tests: $(cat "$step_dir/status")"
+    prev_archive="$step_dir/src.tar.gz"
   done
 done < "$orderings_file"
 
-echo "done — see $RESULTS"
+echo "done — see $CACHE/$MODE"
