@@ -48,13 +48,22 @@ New-Item -ItemType Directory -Force -Path (Join-Path $Cache $Mode)  | Out-Null
 # ---------- helpers ----------
 
 # Invoke Claude Code in $WorkDir with a prompt; wrap in /seam-gen in seam mode.
+#
+# Why we touch [Environment]::CurrentDirectory: in Windows PowerShell 5.1,
+# Push-Location updates the PSDrive location but does NOT sync the .NET
+# process working directory. Native child processes (claude is Node-based)
+# inherit the .NET cwd, so without this they'd run from the script's
+# invocation directory and write files there instead of into workdir/.
 function Invoke-Claude {
     param(
         [string]$Prompt,
         [string]$Out
     )
-    Push-Location $WorkDir
+    $resolvedWorkDir = (Resolve-Path $WorkDir).Path
+    $savedNetCwd = [Environment]::CurrentDirectory
+    Push-Location $resolvedWorkDir
     try {
+        [Environment]::CurrentDirectory = $resolvedWorkDir
         if ($Mode -eq 'seam') {
             claude -p "/seam-gen $Prompt" --dangerously-skip-permissions --output-format json | Set-Content -Path $Out -Encoding utf8
         } else {
@@ -64,12 +73,15 @@ function Invoke-Claude {
             throw "claude exited with code $LASTEXITCODE"
         }
     } finally {
+        [Environment]::CurrentDirectory = $savedNetCwd
         Pop-Location
     }
 }
 
 # Run cumulative pytest for [base] + [given features]; write pass/fail to $StatusOut.
-# Test log goes to $StatusOut.log.
+# Test log goes to $StatusOut.log. See Invoke-Claude for why we also touch
+# [Environment]::CurrentDirectory — pytest adds cwd to sys.path, and tests
+# import `from src.pipeline import ...` which only resolves if cwd is workdir.
 function Invoke-Tests {
     param(
         [string[]]$Features,
@@ -79,8 +91,11 @@ function Invoke-Tests {
     foreach ($f in $Features) {
         $testArgs += (Join-Path $BenchDir "tests/test_$f.py")
     }
-    Push-Location $WorkDir
+    $resolvedWorkDir = (Resolve-Path $WorkDir).Path
+    $savedNetCwd = [Environment]::CurrentDirectory
+    Push-Location $resolvedWorkDir
     try {
+        [Environment]::CurrentDirectory = $resolvedWorkDir
         & python -m pytest -q @testArgs *> "$StatusOut.log"
         if ($LASTEXITCODE -eq 0) {
             'pass' | Set-Content -Path $StatusOut
@@ -88,6 +103,7 @@ function Invoke-Tests {
             'fail' | Set-Content -Path $StatusOut
         }
     } finally {
+        [Environment]::CurrentDirectory = $savedNetCwd
         Pop-Location
     }
 }
@@ -106,19 +122,40 @@ function Restore-Archive {
     }
 }
 
-# Snapshot $WorkDir/src into $Archive.
+# Snapshot $WorkDir/src into $Archive. $ClaudeJson is the run's JSON output,
+# used only to enrich the diagnostic when src/ is missing.
 function Save-Archive {
-    param([string]$Archive)
+    param(
+        [string]$Archive,
+        [string]$ClaudeJson
+    )
     $srcPath = Join-Path $WorkDir 'src'
     if (-not (Test-Path $srcPath)) {
+        $workdirListing = if (Test-Path $WorkDir) {
+            (Get-ChildItem -Force $WorkDir | ForEach-Object { "    $($_.Name)" }) -join "`n"
+        } else {
+            "    (workdir does not exist)"
+        }
+        if (-not $workdirListing) { $workdirListing = "    (empty)" }
+        $jsonHint = if ($ClaudeJson -and (Test-Path $ClaudeJson)) {
+            "  See $ClaudeJson for the raw run output (look for the result or error fields)."
+        } else {
+            "  No JSON output captured."
+        }
         throw @"
 expected '$srcPath' to exist, but it does not. Claude did not produce a ./src/ tree.
-Common causes:
-  - 'claude -p' ran without permission to write files. Try adding
-    '--permission-mode acceptEdits' (or '--dangerously-skip-permissions') to the
-    claude invocations in Invoke-Claude.
-  - The model produced a textual response instead of using its editing tools.
-    Inspect the JSON output for this run to see what happened.
+
+workdir contents:
+$workdirListing
+
+The harness already runs claude with --dangerously-skip-permissions, so this
+is not a permission issue. Likely causes:
+  - claude produced a textual response instead of using its editing tools.
+  - claude wrote files somewhere other than the workdir (cwd mismatch).
+  - In seam mode, /seam-gen was not registered as a slash command (plugin
+    not installed in the environment where claude -p runs).
+
+$jsonHint
 "@
     }
     & tar -czf $Archive -C $WorkDir src
@@ -141,7 +178,7 @@ if (Test-Path $BaseArchive) {
     Invoke-Claude -Prompt $specText -Out $BaseJson
     Invoke-Tests -Features @() -StatusOut $BaseStatus
     Write-Host "    base tests: $((Get-Content -Raw $BaseStatus).Trim())"
-    Save-Archive -Archive $BaseArchive
+    Save-Archive -Archive $BaseArchive -ClaudeJson $BaseJson
 }
 
 # ---------- ordering loop ----------
@@ -191,9 +228,10 @@ foreach ($line in $Orderings) {
         Write-Host "    [$stepIdx] $f - running"
         Restore-Archive -Archive $prevArchive
         $featureText = Get-Content -Raw -Path (Join-Path $BenchDir "features/$f.md")
-        Invoke-Claude -Prompt $featureText -Out (Join-Path $stepDir 'claude.json')
+        $stepJson = Join-Path $stepDir 'claude.json'
+        Invoke-Claude -Prompt $featureText -Out $stepJson
         Invoke-Tests -Features $added -StatusOut $stepStatus
-        Save-Archive -Archive $stepArchive
+        Save-Archive -Archive $stepArchive -ClaudeJson $stepJson
         Write-Host "      tests: $((Get-Content -Raw $stepStatus).Trim())"
         $prevArchive = $stepArchive
     }

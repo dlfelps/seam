@@ -79,19 +79,36 @@ restore_archive() {
   tar -xzf "$archive" -C "$WORKDIR"
 }
 
-# Snapshot $WORKDIR/src into $1.
+# Snapshot $WORKDIR/src into $1. $2 (optional) is the run's JSON output,
+# used only to enrich the diagnostic when src/ is missing.
 snapshot_archive() {
   local archive="$1"
+  local claude_json="${2:-}"
   if [ ! -d "$WORKDIR/src" ]; then
-    cat >&2 <<EOF
-error: expected '$WORKDIR/src' to exist, but it does not. Claude did not produce
-a ./src/ tree. Common causes:
-  - 'claude -p' ran without permission to write files. Try adding
-    '--permission-mode acceptEdits' (or '--dangerously-skip-permissions') to the
-    claude invocations in run_claude.
-  - The model produced a textual response instead of using its editing tools.
-    Inspect the JSON output for this run to see what happened.
-EOF
+    {
+      echo "error: expected '$WORKDIR/src' to exist, but it does not. Claude did not"
+      echo "produce a ./src/ tree."
+      echo
+      echo "workdir contents:"
+      if [ -d "$WORKDIR" ]; then
+        ls -A "$WORKDIR" | sed 's/^/    /' || echo "    (empty)"
+      else
+        echo "    (workdir does not exist)"
+      fi
+      echo
+      echo "The harness already runs claude with --dangerously-skip-permissions, so this"
+      echo "is not a permission issue. Likely causes:"
+      echo "  - claude produced a textual response instead of using its editing tools."
+      echo "  - claude wrote files somewhere other than the workdir (cwd mismatch)."
+      echo "  - In seam mode, /seam-gen was not registered as a slash command (plugin"
+      echo "    not installed in the environment where claude -p runs)."
+      echo
+      if [ -n "$claude_json" ] && [ -f "$claude_json" ]; then
+        echo "  See $claude_json for the raw run output (look for result/error fields)."
+      else
+        echo "  No JSON output captured."
+      fi
+    } >&2
     exit 1
   fi
   tar -czf "$archive" -C "$WORKDIR" src
@@ -109,7 +126,7 @@ else
   base_features=()
   run_tests base_features "$BASE_STATUS"
   echo "    base tests: $(cat "$BASE_STATUS")"
-  snapshot_archive "$BASE_ARCHIVE"
+  snapshot_archive "$BASE_ARCHIVE" "$BASE_JSON"
 fi
 
 # ---------- ordering loop ----------
@@ -149,7 +166,7 @@ while IFS=',' read -ra features; do
     restore_archive "$prev_archive"
     run_claude "$(cat "$BENCH_DIR/features/$f.md")" "$step_dir/claude.json"
     run_tests added "$step_dir/status"
-    snapshot_archive "$step_dir/src.tar.gz"
+    snapshot_archive "$step_dir/src.tar.gz" "$step_dir/claude.json"
     echo "      tests: $(cat "$step_dir/status")"
     prev_archive="$step_dir/src.tar.gz"
   done
