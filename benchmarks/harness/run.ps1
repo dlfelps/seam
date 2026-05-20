@@ -137,11 +137,25 @@ function Save-Archive {
             "    (workdir does not exist)"
         }
         if (-not $workdirListing) { $workdirListing = "    (empty)" }
-        $jsonHint = if ($ClaudeJson -and (Test-Path $ClaudeJson)) {
-            "  See $ClaudeJson for the raw run output (look for the result or error fields)."
-        } else {
-            "  No JSON output captured."
+
+        $jsonHint = "  No JSON output captured."
+        if ($ClaudeJson -and (Test-Path $ClaudeJson)) {
+            $raw = Get-Content -Raw -Path $ClaudeJson
+            try {
+                $parsed = $raw | ConvertFrom-Json
+                $subtype = if ($parsed.subtype) { $parsed.subtype } else { '(none)' }
+                $resultText = if ($parsed.result) { $parsed.result } elseif ($parsed.error) { $parsed.error } else { '' }
+                if ($resultText.Length -gt 800) {
+                    $resultText = $resultText.Substring(0, 800) + "`n    ... (truncated; see $ClaudeJson for full output)"
+                }
+                $indented = ($resultText -split "`n" | ForEach-Object { "    $_" }) -join "`n"
+                $jsonHint = "  claude reported subtype=$subtype. Model response:`n$indented"
+            } catch {
+                $preview = if ($raw.Length -gt 800) { $raw.Substring(0, 800) + ' ... (truncated)' } else { $raw }
+                $jsonHint = "  Could not parse $ClaudeJson as JSON. Preview:`n    $preview"
+            }
         }
+
         throw @"
 expected '$srcPath' to exist, but it does not. Claude did not produce a ./src/ tree.
 
@@ -153,7 +167,8 @@ is not a permission issue. Likely causes:
   - claude produced a textual response instead of using its editing tools.
   - claude wrote files somewhere other than the workdir (cwd mismatch).
   - In seam mode, /seam-gen was not registered as a slash command (plugin
-    not installed in the environment where claude -p runs).
+    not installed in the environment where claude -p runs). Verify with
+    'claude plugin list' that 'seam' is enabled.
 
 $jsonHint
 "@
