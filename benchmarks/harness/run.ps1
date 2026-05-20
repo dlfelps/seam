@@ -47,7 +47,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $Cache $Mode)  | Out-Null
 
 # ---------- helpers ----------
 
-# Invoke Claude Code in $WorkDir with a prompt; wrap in /seam-gen in seam mode.
+# Invoke Claude Code in $WorkDir with a prompt; wrap in /seam:seam-gen in seam mode.
 #
 # Why we touch [Environment]::CurrentDirectory: in Windows PowerShell 5.1,
 # Push-Location updates the PSDrive location but does NOT sync the .NET
@@ -65,7 +65,7 @@ function Invoke-Claude {
     try {
         [Environment]::CurrentDirectory = $resolvedWorkDir
         if ($Mode -eq 'seam') {
-            claude -p "/seam-gen $Prompt" --dangerously-skip-permissions --output-format json | Set-Content -Path $Out -Encoding utf8
+            claude -p "/seam:seam-gen $Prompt" --dangerously-skip-permissions --output-format json | Set-Content -Path $Out -Encoding utf8
         } else {
             claude -p $Prompt --dangerously-skip-permissions --output-format json | Set-Content -Path $Out -Encoding utf8
         }
@@ -166,9 +166,11 @@ The harness already runs claude with --dangerously-skip-permissions, so this
 is not a permission issue. Likely causes:
   - claude produced a textual response instead of using its editing tools.
   - claude wrote files somewhere other than the workdir (cwd mismatch).
-  - In seam mode, /seam-gen was not registered as a slash command (plugin
-    not installed in the environment where claude -p runs). Verify with
-    'claude plugin list' that 'seam' is enabled.
+  - In seam mode, /seam:seam-gen was not registered as a slash command
+    (the seam plugin is not enabled in the environment where claude -p
+    runs). Verify with 'claude plugin list' that 'seam' is enabled.
+    Plugin slash commands are namespaced: it is /seam:seam-gen, not
+    /seam-gen.
 
 $jsonHint
 "@

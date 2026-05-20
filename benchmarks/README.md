@@ -30,7 +30,7 @@ across every possible ordering of three extension requests.
 
 ## What varies
 
-- **Condition** — `baseline` (one Claude Code prompt per step) vs `seam` (`/seam-gen` per step).
+- **Condition** — `baseline` (one Claude Code prompt per step) vs `seam` (`/seam:seam-gen` per step).
 - **Ordering** — all 6 permutations of the three features.
 
 ## Procedure
@@ -51,7 +51,7 @@ across every possible ordering of three extension requests.
         │     step_dir = .cache/<mode>/<NN-perm>/<NN-F>/                   │
         │     if step_dir/status exists:  prev = step_dir/src.tar.gz; skip │
         │     restore prev → workdir/src                                   │
-        │     prompt with features/<F>.md (or /seam-gen)                   │
+        │     prompt with features/<F>.md (or /seam:seam-gen)              │
         │     run cumulative pytest (base ∪ features so far)               │
         │     tar workdir/src → step_dir/src.tar.gz                        │
         │     write claude.json, tests.log, status                         │
@@ -138,7 +138,7 @@ others — exactly the asymmetry the benchmark is designed to surface.
 
 ## Limitations
 
-- `/seam-gen` as written wipes `./.seam-work/` and writes `./src/` from scratch on each
+- `/seam:seam-gen` as written wipes `./.seam-work/` and writes `./src/` from scratch on each
   invocation. The harness compensates by restoring the snapshot and passing the prior
   source tree as context inside the feature prompt (`features/<name>.md` references
   `./src/`). The Architect must therefore reason about extending an existing tree, not

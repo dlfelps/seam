@@ -104,7 +104,7 @@ The Critic rejected the Architect's draft on three successive iterations. The De
 
 ---
 
-Refine your prompt to address the Critic's central concern and re-run `/seam-gen`.
+Refine your prompt to address the Critic's central concern and re-run `/seam:seam-gen`.
 ```
 
 ## Hard rules
