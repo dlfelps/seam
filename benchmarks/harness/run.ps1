@@ -56,9 +56,9 @@ function Invoke-Claude {
     Push-Location $WorkDir
     try {
         if ($Mode -eq 'seam') {
-            claude -p "/seam-gen $Prompt" --output-format json | Set-Content -Path $Out -Encoding utf8
+            claude -p "/seam-gen $Prompt" --permission-mode acceptEdits --output-format json | Set-Content -Path $Out -Encoding utf8
         } else {
-            claude -p $Prompt --output-format json | Set-Content -Path $Out -Encoding utf8
+            claude -p $Prompt --permission-mode acceptEdits --output-format json | Set-Content -Path $Out -Encoding utf8
         }
         if ($LASTEXITCODE -ne 0) {
             throw "claude exited with code $LASTEXITCODE"

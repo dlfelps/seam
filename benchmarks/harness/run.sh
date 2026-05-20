@@ -49,9 +49,9 @@ mkdir -p "$CACHE/base" "$CACHE/$MODE"
 run_claude() {
   local prompt="$1" out="$2"
   if [ "$MODE" = "seam" ]; then
-    (cd "$WORKDIR" && claude -p "/seam-gen $prompt" --output-format json) > "$out"
+    (cd "$WORKDIR" && claude -p "/seam-gen $prompt" --permission-mode acceptEdits --output-format json) > "$out"
   else
-    (cd "$WORKDIR" && claude -p "$prompt" --output-format json) > "$out"
+    (cd "$WORKDIR" && claude -p "$prompt" --permission-mode acceptEdits --output-format json) > "$out"
   fi
 }
 
