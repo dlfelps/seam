@@ -101,10 +101,27 @@ snapshot_archive() {
       echo "  - claude produced a textual response instead of using its editing tools."
       echo "  - claude wrote files somewhere other than the workdir (cwd mismatch)."
       echo "  - In seam mode, /seam-gen was not registered as a slash command (plugin"
-      echo "    not installed in the environment where claude -p runs)."
+      echo "    not installed in the environment where claude -p runs). Verify with"
+      echo "    'claude plugin list' that 'seam' is enabled."
       echo
       if [ -n "$claude_json" ] && [ -f "$claude_json" ]; then
-        echo "  See $claude_json for the raw run output (look for result/error fields)."
+        python - "$claude_json" <<'PY' || echo "  See $claude_json for the raw run output."
+import json, sys, textwrap
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+except Exception as e:
+    print(f"  Could not parse {path} as JSON ({e}). See file for raw output.")
+    sys.exit(0)
+subtype = data.get("subtype", "(none)")
+text = data.get("result") or data.get("error") or ""
+if len(text) > 800:
+    text = text[:800] + f"\n... (truncated; see {path} for full output)"
+indented = textwrap.indent(text, "    ")
+print(f"  claude reported subtype={subtype}. Model response:")
+print(indented)
+PY
       else
         echo "  No JSON output captured."
       fi
