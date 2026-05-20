@@ -46,7 +46,7 @@ def aggregate(results_dir: Path) -> dict:
             status = load_status(perm_dir / f"{feature}.status")
             per_step.append({"feature": feature, "tokens": tokens["total"], "status": status})
         seq_total_tokens = sum(s["tokens"] for s in per_step)
-        seq_pass = all(s["status"] == "pass" for s in per_step) and len(per_step) == 4
+        seq_pass = all(s["status"] == "pass" for s in per_step) and len(per_step) == 3
         orderings.append({
             "name": perm_dir.name,
             "steps": per_step,
@@ -79,7 +79,7 @@ def render(agg: dict) -> str:
     lines.append(f"- base build: {agg['base_tokens']:,} tokens ({agg['base_status']})")
     lines.append(f"- step success rate: {agg['step_success_rate']:.0%}")
     lines.append(f"- sequence success rate: {agg['sequence_success_rate']:.0%}")
-    lines.append(f"- mean tokens per sequence (4 features): {agg['mean_sequence_tokens']:,.0f}")
+    lines.append(f"- mean tokens per sequence (3 features): {agg['mean_sequence_tokens']:,.0f}")
     lines.append("")
     lines.append("| ordering | tokens | all pass |")
     lines.append("|---|---:|:---:|")

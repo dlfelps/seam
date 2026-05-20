@@ -7,9 +7,9 @@ This directory holds the prompts, acceptance tests, and harness scripts. Running
 requires an authenticated Claude Code install — a Pro or Max subscription, an Anthropic API
 key, or Bedrock/Vertex credentials all work. CI does not run it.
 
-A full pass is 194 Claude Code invocations, which is well inside Max's usage budget but is
-likely to bump into Pro's 5-hour rate limits; on Pro, plan to spread the two conditions
-across multiple sittings or run a reduced ordering set (see `harness/permute.py`).
+A full pass is 38 Claude Code invocations (3 features → 6 orderings → 18 feature-step
+invocations + 1 base build per condition × 2 conditions). That fits comfortably inside Pro's
+5-hour rate window.
 
 ## Hypothesis
 
@@ -31,7 +31,7 @@ across every possible ordering of four extension requests.
 ## What varies
 
 - **Condition** — `baseline` (one Claude Code prompt per step) vs `seam` (`/seam-gen` per step).
-- **Ordering** — all 24 permutations of the four features.
+- **Ordering** — all 6 permutations of the three features.
 
 ## Procedure
 
@@ -43,7 +43,7 @@ across every possible ordering of four extension requests.
                                  │  ─ snapshot src/  →  .snapshot/   │
                                  └───────────────┬───────────────────┘
                                                  │
-                  for each of the 24 orderings ──┤
+                   for each of the 6 orderings ──┤
                                                  ▼
                 ┌──────────────────────────────────────────────────────────┐
                 │  restore snapshot                                        │
@@ -70,20 +70,19 @@ Aggregated by `score.py`:
 
 | Metric | Definition |
 | --- | --- |
-| `tokens_per_sequence` | sum across the 4 feature steps (excludes base build) |
+| `tokens_per_sequence` | sum across the 3 feature steps (excludes base build) |
 | `tokens_overhead` | `tokens_per_sequence(seam) − tokens_per_sequence(baseline)`, per ordering |
 | `step_success_rate` | fraction of `(ordering, step)` pairs where cumulative tests pass |
-| `sequence_success_rate` | fraction of orderings whose 4 steps all pass |
+| `sequence_success_rate` | fraction of orderings whose 3 steps all pass |
 | `regression_rate` | fraction of steps where a previously-passing test fails |
 
-## Diversity rationale for the four features
+## Diversity rationale for the three features
 
-The four features were chosen so each one stresses a different architectural seam:
+The three features were chosen so each one stresses a different architectural seam:
 
 | Feature | Axis | What a brittle design will couple to |
 | --- | --- | --- |
 | `json_format` | data shape | hardcoded XML parser path inside `ingest` |
-| `s3_backend` | storage | hardcoded `open(path, "w")` instead of a Store handle |
 | `metrics` | cross-cutting concern | counters scattered inline instead of an observer |
 | `retry_policy` | behavior | try/except blocks inlined into each call site |
 
@@ -101,8 +100,8 @@ others — exactly the asymmetry the benchmark is designed to surface.
 - The base spec and the four feature prompts are written in deliberately neutral prose. A
   prompt that hints at one axis (e.g., "consider future backends") would bias the baseline
   toward the same interfaces Seam discovers. Do not edit them lightly.
-- 24 orderings × 2 conditions × 4 steps + 2 base builds = 194 Claude Code invocations per
-  full run. Expect non-trivial cost.
+- 6 orderings × 2 conditions × 3 steps + 2 base builds = 38 Claude Code invocations per
+  full run.
 
 ## Files
 
@@ -112,18 +111,16 @@ benchmarks/
 ├── spec.md                      # the base requirement (prompt for step 0)
 ├── features/
 │   ├── json_format.md
-│   ├── s3_backend.md
 │   ├── metrics.md
 │   └── retry_policy.md
 ├── tests/
 │   ├── conftest.py
 │   ├── test_base.py
 │   ├── test_json_format.py
-│   ├── test_s3_backend.py
 │   ├── test_metrics.py
 │   └── test_retry_policy.py
 └── harness/
-    ├── permute.py               # emits the 24 orderings
+    ├── permute.py               # emits the 6 orderings
     ├── run.sh                   # full benchmark driver
     ├── measure.py               # extracts token counts from Claude Code JSON output
     └── score.py                 # aggregates results into a summary table
