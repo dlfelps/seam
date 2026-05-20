@@ -126,8 +126,51 @@ seam/
 │   └── marketplace.json    # marketplace catalog (this repo is a one-plugin marketplace)
 ├── commands/
 │   └── seam-gen.md         # /seam-gen orchestrator
-└── agents/
-    ├── architect.md        # interfaces only, model: opus
-    ├── critic.md           # red-team review, model: sonnet
-    └── developer.md        # concrete impl, model: sonnet
+├── agents/
+│   ├── architect.md        # interfaces only, model: opus
+│   ├── critic.md           # red-team review, model: sonnet
+│   └── developer.md        # concrete impl, model: sonnet
+└── LICENSE
 ```
+
+## Publishing
+
+### Validate the manifests
+
+Before tagging a release or submitting upstream, run the bundled validator. It checks `.claude-plugin/marketplace.json` and `.claude-plugin/plugin.json` against the same schema the community-marketplace review pipeline uses:
+
+```bash
+claude plugin validate .            # warns on issues but allows minor ones
+claude plugin validate --strict .   # fails on warnings — use this in CI
+```
+
+A clean run prints `√ Validation passed`.
+
+### Submit to the Anthropic community marketplace
+
+Anthropic operates a public, third-party-friendly catalog at [`anthropics/claude-plugins-community`](https://github.com/anthropics/claude-plugins-community) (installable as `@claude-community`). Submission is done through an in-app form:
+
+- https://claude.ai/settings/plugins/submit
+- https://platform.claude.com/plugins/submit
+
+Workflow:
+
+1. Run `claude plugin validate --strict .` and fix anything it reports.
+2. Tag a release (for example `v0.1.0`) so the catalog can pin to a meaningful ref.
+3. Submit the GitHub URL (`https://github.com/dlfelps/seam`) via either form above.
+4. The review pipeline runs the same validator plus automated safety screening.
+5. On approval, the plugin is pinned to a specific commit SHA in the catalog. CI bumps the pin as new commits land on the default branch.
+6. The public catalog syncs nightly, so there is a delay between approval and the listing appearing. To check status, search for `seam` in [the live `marketplace.json`](https://github.com/anthropics/claude-plugins-community/blob/main/.claude-plugin/marketplace.json).
+
+Once listed, users install with:
+
+```
+/plugin marketplace add anthropics/claude-plugins-community
+/plugin install seam@claude-community
+```
+
+> Note: the separate, curated `claude-plugins-official` marketplace has no application process. Anthropic decides what to include there at its discretion; the submission forms above only feed `claude-community`.
+
+## License
+
+[MIT](./LICENSE)

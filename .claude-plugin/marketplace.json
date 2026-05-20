@@ -16,6 +16,7 @@
       },
       "homepage": "https://github.com/dlfelps/seam",
       "repository": "https://github.com/dlfelps/seam",
+      "license": "MIT",
       "keywords": [
         "code-generation",
         "interfaces",
