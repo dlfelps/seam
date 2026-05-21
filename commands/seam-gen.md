@@ -30,9 +30,9 @@ echo "1" > ./.seam-work/iteration.txt
 
 Then confirm: read `./.seam-work/prompt.txt` and check it contains the user's request; read `./.seam-work/iteration.txt` and check it contains `1`.
 
-### Step 2: Architect → Critic loop (max 3 iterations)
+### Step 2: Architect → Critic loop (max 2 iterations)
 
-Repeat the following until the Critic writes `APPROVE` or until iteration 3 ends on REJECT.
+Repeat the following until the Critic writes `APPROVE` or until iteration 2 ends on REJECT.
 
 **2a. Launch the Architect.** Use the Agent tool with `subagent_type: "architect"`. Use this exact prompt:
 
@@ -50,8 +50,8 @@ Wait for the Critic to complete.
 
 - If it is exactly `APPROVE`: exit the loop and go to Step 3.
 - If it is `REJECT`: read `./.seam-work/iteration.txt`.
-  - If the iteration number is less than 3: increment it (`n=$(cat ./.seam-work/iteration.txt); echo $((n+1)) > ./.seam-work/iteration.txt`) and return to step 2a.
-  - If the iteration number is 3: **abort the pipeline.** Do not invoke the Developer. Skip to Step 4b.
+  - If the iteration number is less than 2: increment it (`n=$(cat ./.seam-work/iteration.txt); echo $((n+1)) > ./.seam-work/iteration.txt`) and return to step 2a.
+  - If the iteration number is 2: **abort the pipeline.** Do not invoke the Developer. Skip to Step 4b.
 - If it is neither `APPROVE` nor `REJECT` on the first line: treat as a Critic malfunction. Stop and report the malformed verdict to the user.
 
 ### Step 3: Developer (runs only after Critic APPROVE)
@@ -86,14 +86,14 @@ Print a final report to chat using this structure:
 `.seam-work/` is preserved for audit. Delete it manually when you're done reviewing.
 ```
 
-### Step 4b: Abort summary (3 rejections in a row)
+### Step 4b: Abort summary (2 rejections in a row)
 
 Print a final report to chat using this structure:
 
 ```
-## Seam aborted after 3 rejection cycles
+## Seam aborted after 2 rejection cycles
 
-The Critic rejected the Architect's draft on three successive iterations. The Developer was not invoked. No files were written outside `./.seam-work/`.
+The Critic rejected the Architect's draft on two successive iterations. The Developer was not invoked. No files were written outside `./.seam-work/`.
 
 **Rejected interface files** (in ./.seam-work/interfaces/):
 - <list each file>
@@ -112,5 +112,5 @@ Refine your prompt to address the Critic's central concern and re-run `/seam:sea
 - Use the Agent tool to launch subagents. Set `subagent_type` to `architect`, `critic`, or `developer`. The subagent's own system prompt has its full instructions; your launch prompt is just the trigger.
 - Do not write interface code or implementation code yourself.
 - Do not invoke the Developer if the Critic's last verdict is REJECT, even if the interfaces look fine to you.
-- The 3-iteration cap is hard. Do not run a fourth iteration under any circumstance.
+- The 2-iteration cap is hard. Do not run a third iteration under any circumstance.
 - Do not delete `./.seam-work/` at the end; the user wants it preserved for audit.
