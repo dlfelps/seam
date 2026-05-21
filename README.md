@@ -117,6 +117,12 @@ The MVP targets Python 3.10+. Interfaces are written using `abc.ABC` + `@abstrac
 
 The most important knob is the Critic's system prompt in `agents/critic.md`. The Critic must be willing to both REJECT (otherwise the workflow collapses into single-shot codegen) and APPROVE (otherwise every run aborts at iteration two). If your runs consistently end in two rejections, the Critic prompt is too strict for your domain — soften the calibration section. If runs always approve on iteration one with sloppy interfaces, the Critic is too lenient — strengthen the bias-toward-skepticism section.
 
+### Design pattern library
+
+The Architect carries a seed library of robust design patterns in `agents/architect.md` — each with a *when to apply* trigger and the *smell* of getting it wrong. These codify the moves that let a design absorb new features without an interface change, so the Architect pre-empts the failures the Critic tests for; first-try approvals rise and fewer refinement iterations are spent. Retune that section to fit your domain.
+
+To extend the library per project without editing the plugin, drop a `.seam-patterns.md` file in your project root. The Architect reads it on every run, and an entry there overrides a built-in pattern of the same name. This file is the seam for personalizing the Architect over time — hand-curated today, and the natural home for patterns distilled automatically from past runs later.
+
 ## Plugin layout
 
 ```
@@ -127,7 +133,7 @@ seam/
 ├── commands/
 │   └── seam-gen.md         # /seam:seam-gen orchestrator
 ├── agents/
-│   ├── architect.md        # interfaces only, model: sonnet
+│   ├── architect.md        # interfaces + design pattern library, model: sonnet
 │   ├── critic.md           # red-team review, model: sonnet
 │   └── developer.md        # concrete impl, model: sonnet
 └── LICENSE
