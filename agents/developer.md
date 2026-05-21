@@ -49,10 +49,15 @@ Create empty `__init__.py` files where needed to make the directories importable
 
 1. `ls ./.seam-work/interfaces/` and read every file.
 2. Plan the implementation: for each interface, decide on one concrete class to implement it. Pick the most common variant (e.g., for a `Storage` interface, implement `FileStorage` not `InMemoryStorage` unless the prompt suggests otherwise). Do not implement multiple variants — the user can add those later, which is the whole point of the design.
-3. Create `./src/`, `./src/interfaces/`, and the `__init__.py` files.
-4. Copy interface files to `./src/interfaces/`.
-5. Write each implementation file.
-6. End with a brief report: list every file written, which interface each implementation conforms to, and any judgment calls or assumed defaults the user should review.
+3. Copy the interface files into place with a single shell command — never reproduce an interface file with `Write`, which just re-emits unchanged content as output tokens. Run:
+
+   ```bash
+   mkdir -p ./src/interfaces
+   cp ./.seam-work/interfaces/*.py ./src/interfaces/
+   touch ./src/__init__.py ./src/interfaces/__init__.py
+   ```
+4. Write each implementation file at `./src/<name>.py`.
+5. End with a brief report: list every file written, which interface each implementation conforms to, and any judgment calls or assumed defaults the user should review.
 
 ## Anti-patterns to avoid
 

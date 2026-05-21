@@ -6,7 +6,7 @@ A Claude Code plugin that enforces interface-first development. Code generation 
 
 Rapid AI-assisted code generation tends to produce tightly coupled, monolithic systems. LLMs optimize for immediate problem resolution and skip the architectural boundaries that make future change cheap. Seam inserts a structured multi-agent gate between the prompt and the implementation: the Architect designs only interfaces, the Critic stress-tests them against three plausible future features, and only on APPROVE does the Developer write concrete code against the finalized contracts.
 
-There is no human approval step. The Critic is the sole architectural conscience — if it cannot articulate how three realistic future features could be added without modifying the interfaces, it rejects the draft and the Architect tries again. The loop is capped at three iterations; if the Critic still rejects on iteration three, the pipeline aborts and reports back instead of shipping rejected interfaces.
+There is no human approval step. The Critic is the sole architectural conscience — if it cannot articulate how three realistic future features could be added without modifying the interfaces, it rejects the draft and the Architect tries again. The loop is capped at two iterations; if the Critic still rejects on iteration two, the pipeline aborts and reports back instead of shipping rejected interfaces.
 
 ## Pipeline
 
@@ -14,9 +14,9 @@ There is no human approval step. The Critic is the sole architectural conscience
 User prompt
    │
    ▼
-┌─────────────┐    REJECT (up to 3x)
+┌─────────────┐    REJECT (up to 2x)
 │  Architect  │◀──────────────────┐
-│  (opus)     │                   │
+│  (sonnet)   │                   │
 └─────────────┘                   │
    │ writes interfaces            │
    ▼                              │
@@ -30,6 +30,12 @@ User prompt
 │  Developer  │
 │  (sonnet)   │── writes ./src/
 └─────────────┘
+   │
+   ▼
+┌─────────────┐
+│  Distiller  │── on a refinement run, appends a learned
+│  (haiku)    │   pattern to ./.seam-patterns.md
+└─────────────┘
 ```
 
 State is passed via files in `./.seam-work/`:
@@ -38,6 +44,7 @@ State is passed via files in `./.seam-work/`:
 - `interfaces/` — current Architect draft
 - `critic-feedback.md` — latest verdict (first line `APPROVE` or `REJECT`)
 - `iteration.txt` — refinement loop counter
+- `history/` — the rejected draft and feedback from iteration 1, snapshotted so the Distiller can learn from a refinement (present only after a REJECT)
 
 ## Installation
 
@@ -92,9 +99,10 @@ Inside a Claude Code session, run:
 The orchestrator will:
 
 1. Initialize `./.seam-work/`.
-2. Loop Architect → Critic up to three times.
+2. Loop Architect → Critic up to two times.
 3. On APPROVE, invoke the Developer to write implementation files into `./src/`.
-4. On three REJECTs, abort and surface the Critic's last report so you can refine the prompt.
+4. If the run took a refinement, invoke the Distiller to record what changed as a learned pattern.
+5. On two REJECTs, abort and surface the Critic's last report so you can refine the prompt.
 
 After a successful run you'll have:
 
@@ -115,7 +123,15 @@ The MVP targets Python 3.10+. Interfaces are written using `abc.ABC` + `@abstrac
 
 ## Tuning
 
-The most important knob is the Critic's system prompt in `agents/critic.md`. The Critic must be willing to both REJECT (otherwise the workflow collapses into single-shot codegen) and APPROVE (otherwise every run aborts at iteration three). If your runs consistently end in three rejections, the Critic prompt is too strict for your domain — soften the calibration section. If runs always approve on iteration one with sloppy interfaces, the Critic is too lenient — strengthen the bias-toward-skepticism section.
+The most important knob is the Critic's system prompt in `agents/critic.md`. The Critic must be willing to both REJECT (otherwise the workflow collapses into single-shot codegen) and APPROVE (otherwise every run aborts at iteration two). If your runs consistently end in two rejections, the Critic prompt is too strict for your domain — soften the calibration section. If runs always approve on iteration one with sloppy interfaces, the Critic is too lenient — strengthen the bias-toward-skepticism section.
+
+### Design pattern library
+
+The Architect carries a seed library of robust design patterns in `agents/architect.md` — each with a *when to apply* trigger and the *smell* of getting it wrong. These codify the moves that let a design absorb new features without an interface change, so the Architect pre-empts the failures the Critic tests for; first-try approvals rise and fewer refinement iterations are spent. Retune that section to fit your domain.
+
+The Architect also reads an optional `.seam-patterns.md` in your project root — project-local patterns that extend or override the built-in library (an entry overrides a built-in of the same name). This file personalizes the Architect over time. You can hand-curate it, and the **Distiller** maintains it automatically: whenever a run is rejected once and then approved, the Distiller (model `haiku`) diffs the rejected draft against the approved interfaces and records the design change as a new pattern. It keeps at most 10 learned patterns, consolidating overlapping ones.
+
+Still, review `.seam-patterns.md` periodically — a learned pattern is only as sound as the Critic verdict it was distilled from, so prune anything that looks like a Critic false-reject.
 
 ## Plugin layout
 
@@ -127,9 +143,10 @@ seam/
 ├── commands/
 │   └── seam-gen.md         # /seam:seam-gen orchestrator
 ├── agents/
-│   ├── architect.md        # interfaces only, model: opus
+│   ├── architect.md        # interfaces + design pattern library, model: sonnet
 │   ├── critic.md           # red-team review, model: sonnet
-│   └── developer.md        # concrete impl, model: sonnet
+│   ├── developer.md        # concrete impl, model: sonnet
+│   └── distiller.md        # learns patterns from refinements, model: haiku
 └── LICENSE
 ```
 
