@@ -30,6 +30,12 @@ User prompt
 │  Developer  │
 │  (sonnet)   │── writes ./src/
 └─────────────┘
+   │
+   ▼
+┌─────────────┐
+│  Distiller  │── on a refinement run, appends a learned
+│  (haiku)    │   pattern to ./.seam-patterns.md
+└─────────────┘
 ```
 
 State is passed via files in `./.seam-work/`:
@@ -38,6 +44,7 @@ State is passed via files in `./.seam-work/`:
 - `interfaces/` — current Architect draft
 - `critic-feedback.md` — latest verdict (first line `APPROVE` or `REJECT`)
 - `iteration.txt` — refinement loop counter
+- `history/` — the rejected draft and feedback from iteration 1, snapshotted so the Distiller can learn from a refinement (present only after a REJECT)
 
 ## Installation
 
@@ -94,7 +101,8 @@ The orchestrator will:
 1. Initialize `./.seam-work/`.
 2. Loop Architect → Critic up to two times.
 3. On APPROVE, invoke the Developer to write implementation files into `./src/`.
-4. On two REJECTs, abort and surface the Critic's last report so you can refine the prompt.
+4. If the run took a refinement, invoke the Distiller to record what changed as a learned pattern.
+5. On two REJECTs, abort and surface the Critic's last report so you can refine the prompt.
 
 After a successful run you'll have:
 
@@ -121,7 +129,9 @@ The most important knob is the Critic's system prompt in `agents/critic.md`. The
 
 The Architect carries a seed library of robust design patterns in `agents/architect.md` — each with a *when to apply* trigger and the *smell* of getting it wrong. These codify the moves that let a design absorb new features without an interface change, so the Architect pre-empts the failures the Critic tests for; first-try approvals rise and fewer refinement iterations are spent. Retune that section to fit your domain.
 
-To extend the library per project without editing the plugin, drop a `.seam-patterns.md` file in your project root. The Architect reads it on every run, and an entry there overrides a built-in pattern of the same name. This file is the seam for personalizing the Architect over time — hand-curated today, and the natural home for patterns distilled automatically from past runs later.
+The Architect also reads an optional `.seam-patterns.md` in your project root — project-local patterns that extend or override the built-in library (an entry overrides a built-in of the same name). This file personalizes the Architect over time. You can hand-curate it, and the **Distiller** maintains it automatically: whenever a run is rejected once and then approved, the Distiller (model `haiku`) diffs the rejected draft against the approved interfaces and records the design change as a new pattern. It keeps at most 10 learned patterns, consolidating overlapping ones.
+
+Still, review `.seam-patterns.md` periodically — a learned pattern is only as sound as the Critic verdict it was distilled from, so prune anything that looks like a Critic false-reject.
 
 ## Plugin layout
 
@@ -135,7 +145,8 @@ seam/
 ├── agents/
 │   ├── architect.md        # interfaces + design pattern library, model: sonnet
 │   ├── critic.md           # red-team review, model: sonnet
-│   └── developer.md        # concrete impl, model: sonnet
+│   ├── developer.md        # concrete impl, model: sonnet
+│   └── distiller.md        # learns patterns from refinements, model: haiku
 └── LICENSE
 ```
 
